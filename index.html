@@ -127,7 +127,7 @@
 
   function draw() {
     ctx.clearRect(0, 0, W, H);
-    const R = Math.min(170, Math.max(110, W * .12)), R2 = R * R;
+    const R = Math.min(215, Math.max(140, W * .15)), R2 = R * R;
     for (const L of layers) {
       ctx.font = L.font;
       const fs = L.fs, heads = new Set();
