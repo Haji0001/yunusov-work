@@ -1,1 +1,189 @@
-<h1>yunusov.work</h1>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>yunusov.work</title>
+<meta name="description" content="π">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="yunusov.work">
+<meta property="og:description" content="π">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23000'/%3E%3Ctext x='32' y='47' font-family='monospace' font-size='44' text-anchor='middle' fill='%2300ff66'%3E%CF%80%3C/text%3E%3C/svg%3E">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:default}
+  canvas{display:block;width:100vw;height:100vh;height:100dvh;touch-action:none}
+  .sig{position:fixed;right:clamp(20px,4vw,56px);bottom:clamp(20px,4vw,48px);
+    text-align:right;user-select:none;pointer-events:auto;cursor:pointer;text-decoration:none;display:block;outline:none;
+    opacity:0;animation:in 3s ease 1.5s forwards}
+  .sig::before{content:"";display:block;width:2.2em;height:1px;margin:0 0 12px auto;
+    background:linear-gradient(90deg,transparent,#00e05a);font-size:clamp(12px,1.25vw,16px)}
+  .name{margin:0 -.55em 0 0;padding:2px 0;
+    font:300 clamp(12px,1.25vw,16px)/1 "Helvetica Neue",Helvetica,Arial,sans-serif;
+    letter-spacing:.55em;text-transform:uppercase;color:#cfeedd;
+    text-shadow:0 0 10px rgba(0,255,102,.35)}
+  .pi{margin:10px 0 0;width:0;min-width:100%;overflow:hidden;white-space:nowrap;
+    font:11px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.08em;color:#6fd69a;
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent);
+            mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent)}
+  .pi span{display:inline-block;will-change:transform}
+  .name,.sig::before{transition:color .4s,text-shadow .4s,width .4s}
+  .sig:hover .name,.sig:focus-visible .name{color:#fff;text-shadow:0 0 14px rgba(0,255,102,.75)}
+  .sig:hover::before,.sig:focus-visible::before{width:3.4em}
+  @keyframes in{to{opacity:.92}}
+  @media (prefers-reduced-motion:reduce){.sig{animation:none;opacity:.92}}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Цифры числа π"></canvas>
+<a class="sig" href="mailto:nizar@yunusov.work" title="Написать: nizar@yunusov.work" aria-label="Написать Низару Юнусову: nizar@yunusov.work">
+  <h1 class="name">Yunusov</h1>
+  <p class="pi" aria-hidden="true"><span id="pi"></span></p>
+</a>
+<script>
+(() => {
+  function piDigits(n) {
+    const S = 10n ** BigInt(n + 12);
+    const atanInv = x => {
+      const x2 = x * x; let term = S / x, sum = term, k = 1n, sign = -1n;
+      for (;;) { term /= x2; const t = term / (2n * k + 1n); if (t === 0n) break; sum += sign * t; sign = -sign; k++; }
+      return sum;
+    };
+    return ((16n * atanInv(5n) - 4n * atanInv(239n)) / 10n ** 12n).toString();
+  }
+  const DIG = piDigits(10000), N = DIG.length;
+
+  // --- slow π ticker under the name ---
+  const piEl = document.getElementById('pi');
+  const groups = DIG.slice(1, 2001).match(/.{1,5}/g).join(' ');
+  piEl.textContent = 'π = 3,' + groups + ' …';
+  let off = 0, lastT = 0;
+  const SPEED = 9; // px per second
+  function ticker(t) {
+    if (lastT) off += (t - lastT) / 1000 * SPEED;
+    lastT = t;
+    if (off > piEl.scrollWidth) off = 0;
+    piEl.style.transform = `translateX(${-off}px)`;
+  }
+  // --- rain ---
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  const sig = document.querySelector('.sig');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // far → near
+  const LAYERS = [
+    { k: .55, a: .30, sp: .55, decay: .978, dens: .35, blur: 0, head: '#3fbf73', reveal: 0 },
+    { k: .75, a: .55, sp: .75, decay: .970, dens: .45, blur: 0, head: '#8ff0b4', reveal: 0 },
+    { k: 1.0, a: 1.0, sp: 1.0, decay: .962, dens: .6,  blur: 8, head: '#d8ffe6', reveal: 1 },
+  ];
+  let W, H, dpr, box, layers, ptr = 0;
+  const pointer = { x: -1e4, y: -1e4, s: 0, target: 0 };
+
+  function setup() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const base = W < 600 ? 15 : 19;
+    const r0 = sig.getBoundingClientRect(), g = 12, gv = 6;
+    box = { l: r0.left - g, r: r0.right + g, t: r0.top - gv, b: r0.bottom + gv };
+    let seed = 0;
+    layers = LAYERS.map((L, li) => {
+      const fs = Math.round(base * L.k), cols = Math.max(1, Math.round(W / fs)), cw = W / cols, rows = Math.ceil(H / fs) + 1;
+      const n = cols * rows, ch = new Array(n), b = new Float32Array(n), blocked = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        ch[i] = DIG[(seed + i * 7) % N];
+        const x = (i % cols) * cw + cw / 2, y = Math.floor(i / cols) * fs;
+        blocked[i] = 0;
+      }
+      seed += 3001;
+      const drops = [];
+      for (let c = 0; c < cols; c++) if (Math.random() < L.dens)
+        drops.push({ c, y: -Math.random() * rows * 1.5, v: (0.10 + Math.random() * 0.22) * L.sp, last: -1 });
+      return { ...L, fs, cw, cols, rows, ch, b, blocked, drops, font: `${fs}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace` };
+    });
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  }
+
+  // time-based: dt = elapsed time in 60 Hz frames, so speed is identical on 60/90/120/144 Hz
+  function step(dt) {
+    for (const L of layers) {
+      const dec = Math.pow(L.decay, dt);
+      for (let i = 0; i < L.b.length; i++) if (L.b[i] > 0) { L.b[i] *= dec; if (L.b[i] < .02) L.b[i] = 0; }
+      for (const d of L.drops) {
+        d.y += d.v * dt;
+        const row = Math.floor(d.y);
+        if (row > d.last) {
+          for (let rr = Math.max(d.last + 1, 0); rr <= row && rr < L.rows; rr++) {
+            const i = rr * L.cols + d.c;
+            L.ch[i] = DIG[ptr]; ptr = (ptr + 1) % N;
+            L.b[i] = 1; d.head = i;
+          }
+          d.last = row;
+        }
+        if (row > L.rows + 25 && Math.random() < 1 - Math.pow(.985, dt)) { d.y = -Math.random() * 20; d.last = -1; d.head = -1; }
+      }
+    }
+    pointer.s += (pointer.target - pointer.s) * (1 - Math.pow(.94, dt));
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const R = Math.min(170, Math.max(110, W * .12)), R2 = R * R;
+    for (const L of layers) {
+      ctx.font = L.font;
+      const fs = L.fs, heads = new Set();
+      for (const d of L.drops) if (d.head >= 0) heads.add(d.head);
+      ctx.fillStyle = '#00e05a';
+      for (let i = 0; i < L.b.length; i++) {
+        if (L.blocked[i]) continue;
+        const x = (i % L.cols) * L.cw + L.cw / 2, y = Math.floor(i / L.cols) * fs + fs / 2;
+        let a = L.b[i] * L.a;
+        if (pointer.s > .01) {
+          const dx = x - pointer.x, dy = y - pointer.y, q = dx * dx + dy * dy;
+          if (q < R2) { const f = 1 - Math.sqrt(q) / R; a = Math.min(1, a + (L.reveal ? f * f * .8 * pointer.s : 0) + (a > 0 ? f * .35 * L.a * pointer.s : 0)); }
+        }
+        if (a < .03 || heads.has(i)) continue;
+        ctx.globalAlpha = a;
+        ctx.fillText(L.ch[i], x, y - fs / 2);
+      }
+      // heads: bright, soft glow
+      ctx.fillStyle = L.head;
+      if (L.blur) { ctx.shadowColor = '#00ff66'; ctx.shadowBlur = L.blur; }
+      for (const i of heads) {
+        if (L.blocked[i]) continue;
+        ctx.globalAlpha = L.a;
+        ctx.fillText(L.ch[i], (i % L.cols) * L.cw + L.cw / 2, Math.floor(i / L.cols) * fs);
+      }
+      ctx.shadowBlur = 0;
+    }
+    // soft, perfectly symmetric clearing around the signature
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = '#000'; ctx.shadowColor = '#000'; ctx.shadowBlur = 10;
+    ctx.fillRect(box.l, box.t, box.r - box.l, box.b - box.t);
+    ctx.shadowBlur = 0; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  let prev = 0;
+  function loop(t) { const dt = prev ? Math.min((t - prev) / (1000 / 60), 4) : 1; prev = t; step(dt); draw(); ticker(t); requestAnimationFrame(loop); }
+
+  function drawStatic() {
+    for (const L of layers) for (let i = 0; i < L.b.length; i++) L.b[i] = Math.random() * .6;
+    draw();
+  }
+
+  const move = (x, y) => { pointer.x = x; pointer.y = y; pointer.target = 1; };
+  addEventListener('pointermove', e => move(e.clientX, e.clientY));
+  addEventListener('pointerdown', e => move(e.clientX, e.clientY));
+  addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') pointer.target = 0; });
+  addEventListener('pointercancel', () => pointer.target = 0);
+  document.addEventListener('mouseleave', () => pointer.target = 0);
+  addEventListener('blur', () => pointer.target = 0);
+
+  let t; addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => { setup(); if (reduce) drawStatic(); }, 150); });
+
+  setup();
+  if (reduce) drawStatic(); else requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
